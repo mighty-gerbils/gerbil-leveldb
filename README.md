@@ -6,6 +6,11 @@ This package provides a Gerbil LevelDB driver using `libleveldb`.
 
 You need to have `libleveldb` installed in your system.
 
+In ubuntu:
+```
+$ sudo apt install libleveldb-dev
+```
+
 ## Installation
 
 To install the package in your `$GERBIL_PATH` (`~/.gerbil` by default):
