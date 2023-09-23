@@ -15,7 +15,7 @@ $ sudo apt install libleveldb-dev
 
 To install the package in your `$GERBIL_PATH` (`~/.gerbil` by default):
 ```shell
-$ gerbil pkg install github.com/might-gerbils/gerbil-leveldb
+$ gerbil pkg install github.com/mighty-gerbils/gerbil-leveldb
 ```
 
 ## API
