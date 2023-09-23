@@ -1,7 +1,7 @@
 ;;; -*- Gerbil -*-
 ;;; (C) vyzo at hackzen.org
 ;;; LevelDB FFI interface
-package: std/db
+package: clan/db
 
 (export #t)
 (extern
