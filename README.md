@@ -6,14 +6,39 @@ This package provides a Gerbil LevelDB driver using `libleveldb`.
 
 You need to have `libleveldb` installed in your system.
 
-In ubuntu:
+### Ubuntu:
+
 ```
 $ sudo apt install libleveldb-dev
+```
+
+### macOS:
+
+Install [homebrew](https://brew.sh) (if not already done):
+
+```
+$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+then install leveldb:
+
+```
+$ brew install leveldb
+```
+
+#### macOS on ARM:
+On ARM64 architectures (M1...) Homebrew installs its bits in `/opt/homebrew`. For some reason `leveldb` does not provide support for `pkg-config`. macOS users on ARM need to export `CPPFLAGS` and `LDFLAGS` for the compiler to find leveldb headers and library.
+
+```
+$ arch          ## arm64 
+$ export CPPFLAGS=-I/opt/homebrew/include
+$ export LDFLAGS=-L/opt/homebrew/lib
 ```
 
 ## Installation
 
 To install the package in your `$GERBIL_PATH` (`~/.gerbil` by default):
+
 ```shell
 $ gerbil pkg install github.com/mighty-gerbils/gerbil-leveldb
 ```
