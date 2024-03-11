@@ -17,7 +17,7 @@ $ sudo apt install libleveldb-dev
 Install [homebrew](https://brew.sh) (if not already done):
 
 ```
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
 then install leveldb:
