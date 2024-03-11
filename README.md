@@ -31,7 +31,7 @@ On ARM64 architectures (M1...) Homebrew installs its bits in `/opt/homebrew`. Fo
 
 ```
 $ arch          ## arm64 
-$ export CPPFLAGS=-I/opt/homebrewinclude
+$ export CPPFLAGS=-I/opt/homebrew/include
 $ export LDFLAGS=-L/opt/homebrew/lib
 ```
 
