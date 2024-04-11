@@ -1,5 +1,2 @@
 build-deps
 *~
-db/_leveldb.c
-manifest.ss
-gambit.log
