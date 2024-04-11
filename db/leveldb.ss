@@ -283,7 +283,7 @@
         (leveldb-iter-fini state)
         (set! (iterator-e it) #f))))
 
-  (let (it (make-iterator e: state next: next fini: fini))
+  (let (it (make-iterator state next fini))
     (make-will it fini)
     (leveldb-iter-start state)
     it))
