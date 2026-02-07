@@ -13,7 +13,7 @@
         leveldb-open leveldb-close
         leveldb-put leveldb-get leveldb-delete leveldb-write leveldb-key?
         leveldb-writebatch leveldb-writebatch-clear
-        leveldb-writebatch-put leveldb-writebatch-delete
+        leveldb-writebatch-put leveldb-writebatch-delete leveldb-writebatch-append
         leveldb-iterator leveldb-iterator-close leveldb-iterator-valid?
         leveldb-iterator-seek-first leveldb-iterator-seek-last
         leveldb-iterator-seek
@@ -26,7 +26,12 @@
         leveldb-repair-db
         leveldb-options leveldb-default-options
         leveldb-read-options leveldb-default-read-options
-        leveldb-write-options leveldb-default-write-options)
+        leveldb-write-options leveldb-default-write-options
+        leveldb-snapshot leveldb-snapshot-release
+        leveldb-property
+        leveldb-approximate-size
+        leveldb-version
+        leveldb-default-env leveldb-env-test-directory)
 
 (deferror-class LevelDBError () leveldb-error?)
 
@@ -167,6 +172,9 @@
 (def (leveldb-writebatch-delete batch key)
   (let (keyx (value-bytes key))
     (leveldb_writebatch_delete batch keyx)))
+
+(def (leveldb-writebatch-append dest src)
+  (leveldb_writebatch_append dest src))
 
 ;; Iterators
 (def (leveldb-iterator ldb (opts (leveldb-default-read-options)))
@@ -360,6 +368,50 @@
      ((errptr_str errptr)
       => (cut raise-leveldb-error 'leveldb-repair-db <>)))))
 
+;; Snapshots
+(def (leveldb-snapshot ldb)
+  (with ((leveldb db) ldb)
+    (if db
+      (check-ptr (leveldb_create_snapshot db))
+      (raise-context-error 'leveldb-snapshot "LevelDB database has been closed"))))
+
+(def (leveldb-snapshot-release ldb snapshot)
+  (with ((leveldb db) ldb)
+    (if db
+      (leveldb_release_snapshot db snapshot)
+      (raise-context-error 'leveldb-snapshot-release "LevelDB database has been closed"))))
+
+;; Database Properties
+(def (leveldb-property ldb name)
+  (with ((leveldb db) ldb)
+    (if db
+      (leveldb_property_value db name)
+      (raise-context-error 'leveldb-property "LevelDB database has been closed"))))
+
+;; Approximate Sizes
+(def (leveldb-approximate-size ldb start-key end-key)
+  (with ((leveldb db) ldb)
+    (if db
+      (let ((startx (value-bytes start-key))
+            (endx (value-bytes end-key)))
+        (leveldb_approximate_sizes db startx endx))
+      (raise-context-error 'leveldb-approximate-size "LevelDB database has been closed"))))
+
+;; Version
+(def (leveldb-version)
+  (values (leveldb_major_version) (leveldb_minor_version)))
+
+;; Environment
+(def (leveldb-default-env)
+  (check-ptr (leveldb_create_default_env)))
+
+(def (leveldb-env-test-directory env)
+  (leveldb_env_get_test_directory env))
+
+;; Note: Custom comparators and writebatch iterate require C-to-Scheme callbacks
+;; which are complex to implement correctly in the FFI. These features are not
+;; exposed in this wrapper. Use the default byte-ordering comparator.
+
 ;; options objects
 (def (leveldb-options create-if-missing:      (create-if-missing #t)      ; boolean
                       error-if-exists:        (error-if-exists #f)        ; boolean
@@ -369,8 +421,10 @@
                       max-open-files:         (max-open-files #f)         ; int
                       block-size:             (block-size #f)             ; size_t
                       block-restart-interval: (block-restart-interval #f) ; int
+                      max-file-size:          (max-file-size #f)          ; size_t
                       lru-cache-capacity:     (lru-cache-capacity #f)     ; size_t
                       bloom-filter-bits:      (bloom-filter-bits #f)      ; int
+                      env:                    (env #f)                    ; leveldb_env_t*
                       )
   (let (opts (check-ptr (leveldb_options_create)))
     (when create-if-missing
@@ -397,6 +451,12 @@
       (if (fixnum? block-restart-interval)
         (leveldb_options_set_block_restart_interval opts block-restart-interval)
         (raise-bad-argument 'leveldb "fixnum: block restart interval" block-restart-interval)))
+    (when max-file-size
+      (if (fixnum-positive? max-file-size)
+        (leveldb_options_set_max_file_size opts max-file-size)
+        (raise-bad-argument 'leveldb "positive fixnum: max file size" max-file-size)))
+    (when env
+      (leveldb_options_set_env opts env))
     (def cache
       (when lru-cache-capacity
         (if (fixnum-positive? lru-cache-capacity)
@@ -421,12 +481,15 @@
 
 (def (leveldb-read-options verify-checksums: (verify-checksums #f) ; boolean
                            fill-cache:       (fill-cache #f)       ; boolean
+                           snapshot:         (snapshot #f)         ; snapshot pointer
                            )
   (let (opts (check-ptr (leveldb_readoptions_create)))
     (when verify-checksums
       (leveldb_readoptions_set_verify_checksums opts 1))
     (when fill-cache
       (leveldb_readoptions_set_fill_cache opts 1))
+    (when snapshot
+      (leveldb_readoptions_set_snapshot opts snapshot))
     opts))
 
 (def (leveldb-default-read-options)

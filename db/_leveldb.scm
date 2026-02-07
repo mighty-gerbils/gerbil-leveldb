@@ -11,9 +11,9 @@
   (not safe))
 
 (namespace ("clan/db/_leveldb#"))
-(##namespace ("" define-macro define let let* if or and
+(##namespace ("" define-macro define let let* if or and set! begin lambda
               quote quasiquote unquote unquote-splicing
-              c-lambda c-define-type c-declare c-initialize
+              c-lambda c-define-type c-declare c-initialize c-define
               ))
 
 (c-declare #<<END-C
@@ -43,6 +43,7 @@ static ___SCMOBJ ffi_free_leveldb_readoptions (void *ptr);
 static ___SCMOBJ ffi_free_leveldb_writeoptions (void *ptr);
 static ___SCMOBJ ffi_free_leveldb_cache (void *ptr);
 static ___SCMOBJ ffi_free_leveldb_filterpolicy (void *ptr);
+static ___SCMOBJ ffi_free_leveldb_env (void *ptr);
 static void ffi_leveldb_put (leveldb_t* db, leveldb_writeoptions_t* opts, ___SCMOBJ key, ___SCMOBJ val, char** errptr);
 static leveldb_slice_t* ffi_leveldb_get (leveldb_t* db, leveldb_readoptions_t* opts, ___SCMOBJ key, char** errptr);
 static void ffi_leveldb_delete (leveldb_t* db, leveldb_writeoptions_t* opts, ___SCMOBJ key, char** errptr);
@@ -51,7 +52,7 @@ static void ffi_leveldb_writebatch_delete (leveldb_writebatch_t* batch, ___SCMOB
 static void ffi_leveldb_iter_seek (leveldb_iterator_t* itor, ___SCMOBJ key);
 static leveldb_slice_t* ffi_leveldb_iter_key (leveldb_iterator_t* itor);
 static leveldb_slice_t* ffi_leveldb_iter_value (leveldb_iterator_t* itor);
-static uint64_t ffi_leveldb_approximate_sizes (leveldb_t* db, int num_ranges, ___SCMOBJ start, ___SCMOBJ limit);
+static uint64_t ffi_leveldb_approximate_sizes (leveldb_t* db, ___SCMOBJ start, ___SCMOBJ limit);
 static void ffi_leveldb_compact_range (leveldb_t* db, ___SCMOBJ start, ___SCMOBJ limit);
 static char** ffi_leveldb_make_errptr();
 static void ffi_leveldb_errptr_clear (char** errptr);
@@ -108,6 +109,14 @@ END-C
 (c-define-type leveldb_filterpolicy_t*
   (pointer leveldb_filterpolicy_t (leveldb_filterpolicy_t*) "ffi_free_leveldb_filterpolicy"))
 
+(c-define-type leveldb_snapshot_t "leveldb_snapshot_t")
+(c-define-type leveldb_snapshot_t*
+  (pointer leveldb_snapshot_t (leveldb_snapshot_t*)))
+
+(c-define-type leveldb_env_t "leveldb_env_t")
+(c-define-type leveldb_env_t*
+  (pointer leveldb_env_t (leveldb_env_t*) "ffi_free_leveldb_env"))
+
 (define-c-lambda leveldb_open (leveldb_options_t* UTF-8-string leveldb_errptr) leveldb_t*)
 (define-c-lambda leveldb_close (leveldb_t*) void)
 
@@ -162,12 +171,33 @@ END-C
 (define-c-lambda leveldb_options_set_filter_policy (leveldb_options_t* leveldb_filterpolicy_t*) void)
 (define-c-lambda leveldb_filterpolicy_create_bloom (int) leveldb_filterpolicy_t*)
 
+(define-c-lambda leveldb_options_set_max_file_size (leveldb_options_t* size_t) void)
+
+(define-c-lambda leveldb_approximate_sizes (leveldb_t* scheme-object scheme-object) unsigned-int64
+  "ffi_leveldb_approximate_sizes")
+
+(define-c-lambda leveldb_major_version () int)
+(define-c-lambda leveldb_minor_version () int)
+
+(define-c-lambda leveldb_writebatch_append (leveldb_writebatch_t* leveldb_writebatch_t*) void)
+
+;; Environment
+(define-c-lambda leveldb_create_default_env () leveldb_env_t*)
+(define-c-lambda leveldb_env_get_test_directory (leveldb_env_t*) char*)
+(define-c-lambda leveldb_options_set_env (leveldb_options_t* leveldb_env_t*) void)
+
 (define-c-lambda leveldb_readoptions_create () leveldb_readoptions_t*)
 (define-c-lambda leveldb_readoptions_set_verify_checksums (leveldb_readoptions_t* int) void)
 (define-c-lambda leveldb_readoptions_set_fill_cache (leveldb_readoptions_t* int) void)
+(define-c-lambda leveldb_readoptions_set_snapshot (leveldb_readoptions_t* leveldb_snapshot_t*) void)
 
 (define-c-lambda leveldb_writeoptions_create () leveldb_writeoptions_t*)
 (define-c-lambda leveldb_writeoptions_set_sync (leveldb_writeoptions_t* int) void)
+
+(define-c-lambda leveldb_create_snapshot (leveldb_t*) leveldb_snapshot_t*)
+(define-c-lambda leveldb_release_snapshot (leveldb_t* leveldb_snapshot_t*) void)
+
+(define-c-lambda leveldb_property_value (leveldb_t* char-string) char*)
 
 (define-c-lambda make_errptr () leveldb_errptr
   "ffi_leveldb_make_errptr")
@@ -247,6 +277,12 @@ ___SCMOBJ ffi_free_leveldb_filterpolicy (void *ptr)
 {
  leveldb_filterpolicy_destroy ((leveldb_filterpolicy_t*)ptr);
   return ___FIX (___NO_ERR);
+}
+
+___SCMOBJ ffi_free_leveldb_env (void *ptr)
+{
+ leveldb_env_destroy ((leveldb_env_t*)ptr);
+ return ___FIX (___NO_ERR);
 }
 
 
@@ -347,6 +383,23 @@ void ffi_leveldb_errptr_clear (char** errptr)
 void ffi_leveldb_slice_bytes (leveldb_slice_t* slice, ___SCMOBJ bytes)
 {
  memcpy (U8_DATA (bytes), slice->data, slice->len);
+}
+
+uint64_t ffi_leveldb_approximate_sizes (leveldb_t* db, ___SCMOBJ start, ___SCMOBJ limit)
+{
+ const char* start_keys[1];
+ size_t start_lens[1];
+ const char* limit_keys[1];
+ size_t limit_lens[1];
+ uint64_t sizes[1];
+
+ start_keys[0] = (char*)U8_DATA (start);
+ start_lens[0] = U8_LEN (start);
+ limit_keys[0] = (char*)U8_DATA (limit);
+ limit_lens[0] = U8_LEN (limit);
+
+ leveldb_approximate_sizes (db, 1, start_keys, start_lens, limit_keys, limit_lens, sizes);
+ return sizes[0];
 }
 
 END-C

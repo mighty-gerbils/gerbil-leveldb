@@ -51,9 +51,29 @@ package: clan/db
   leveldb_readoptions_create
   leveldb_readoptions_set_verify_checksums
   leveldb_readoptions_set_fill_cache
+  leveldb_readoptions_set_snapshot
 
   leveldb_writeoptions_create
   leveldb_writeoptions_set_sync
+
+  leveldb_create_snapshot
+  leveldb_release_snapshot
+
+  leveldb_property_value
+
+  leveldb_options_set_max_file_size
+
+  leveldb_approximate_sizes
+
+  leveldb_major_version
+  leveldb_minor_version
+
+  leveldb_writebatch_append
+
+  ;; Environment
+  leveldb_create_default_env
+  leveldb_env_get_test_directory
+  leveldb_options_set_env
 
   make_errptr
   errptr_clear
