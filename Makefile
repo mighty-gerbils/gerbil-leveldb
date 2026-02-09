@@ -7,7 +7,7 @@ all: build
 
 # Build the library
 build:
-	./build.ss
+	gerbil build
 
 # Clean build artifacts
 clean:
