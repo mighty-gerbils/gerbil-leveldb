@@ -37,7 +37,6 @@ static ___SCMOBJ ffi_free (void *ptr);
 static ___SCMOBJ ffi_free_leveldb_errptr (void *ptr);
 static ___SCMOBJ ffi_free_leveldb_slice (void *ptr);
 static ___SCMOBJ ffi_free_leveldb_writebatch (void *ptr);
-static ___SCMOBJ ffi_free_leveldb_iter (void *ptr);
 static ___SCMOBJ ffi_free_leveldb_options (void *ptr);
 static ___SCMOBJ ffi_free_leveldb_readoptions (void *ptr);
 static ___SCMOBJ ffi_free_leveldb_writeoptions (void *ptr);
@@ -243,12 +242,6 @@ ___SCMOBJ ffi_free_leveldb_writebatch (void *ptr)
  leveldb_writebatch_destroy ((leveldb_writebatch_t*)ptr);
  return ___FIX (___NO_ERR);
 }
-___SCMOBJ ffi_free_leveldb_iter (void *ptr)
-{
-  leveldb_iter_destroy ((leveldb_iterator_t*)ptr);
-  return ___FIX (___NO_ERR);
-}
-
 ___SCMOBJ ffi_free_leveldb_options (void *ptr)
 {
  leveldb_options_destroy ((leveldb_options_t*)ptr);
@@ -299,6 +292,7 @@ leveldb_slice_t* ffi_leveldb_get (leveldb_t* db, leveldb_readoptions_t* opts, __
  if (val)
  {
   leveldb_slice_t* res = malloc (sizeof (leveldb_slice_t));
+  if (!res) { free (val); return NULL; }
   res->data = val;
   res->len = len;
   res->own = 1;
@@ -335,6 +329,7 @@ leveldb_slice_t* ffi_leveldb_iter_key (leveldb_iterator_t* itor)
  if (val)
  {
   leveldb_slice_t* res = malloc (sizeof (leveldb_slice_t));
+  if (!res) return NULL;
   res->data = val;
   res->len = len;
   res->own = 0;
@@ -351,6 +346,7 @@ leveldb_slice_t* ffi_leveldb_iter_value (leveldb_iterator_t* itor)
  if (val)
  {
   leveldb_slice_t* res = malloc (sizeof (leveldb_slice_t));
+  if (!res) return NULL;
   res->data = val;
   res->len = len;
   res->own = 0;
@@ -361,12 +357,17 @@ leveldb_slice_t* ffi_leveldb_iter_value (leveldb_iterator_t* itor)
 
 void ffi_leveldb_compact_range (leveldb_t* db, ___SCMOBJ start, ___SCMOBJ limit)
 {
- leveldb_compact_range (db, (char*)U8_DATA (start), U8_LEN (start), (char*)U8_DATA (limit), U8_LEN (limit));
+ const char* start_ptr = (start == ___FAL) ? NULL : (char*)U8_DATA (start);
+ size_t start_len = (start == ___FAL) ? 0 : U8_LEN (start);
+ const char* limit_ptr = (limit == ___FAL) ? NULL : (char*)U8_DATA (limit);
+ size_t limit_len = (limit == ___FAL) ? 0 : U8_LEN (limit);
+ leveldb_compact_range (db, start_ptr, start_len, limit_ptr, limit_len);
 }
 
 char** ffi_leveldb_make_errptr()
 {
  char** res = malloc (sizeof (char*));
+ if (!res) return NULL;
  *res = 0;
  return res;
 }

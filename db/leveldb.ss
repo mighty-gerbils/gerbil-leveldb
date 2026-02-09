@@ -59,12 +59,29 @@
   final: #t)
 (defstruct leveldb-itor (e)
   final: #t)
+(defstruct leveldb-snap (ldb ptr)
+  final: #t)
+
+;; Lexicographic comparison for u8vectors (used by range iteration)
+(def (bytes>=? a b)
+  (let ((alen (u8vector-length a))
+        (blen (u8vector-length b)))
+    (let loop ((i 0))
+      (cond
+       ((and (= i alen) (= i blen)) #t)  ; equal
+       ((= i alen) #f)                    ; a is prefix of b => a < b
+       ((= i blen) #t)                    ; b is prefix of a => a > b
+       ((> (u8vector-ref a i) (u8vector-ref b i)) #t)
+       ((< (u8vector-ref a i) (u8vector-ref b i)) #f)
+       (else (loop (+ i 1)))))))
 
 (def (leveldb-open name (opts (leveldb-default-options)))
   (let* ((errptr (get-errptr))
          (ptr (leveldb_open (leveldb-opts-e opts) name errptr)))
     (if ptr
-      (make-leveldb ptr opts)
+      (let (ldb (make-leveldb ptr opts))
+        (make-will ldb leveldb-close)
+        ldb)
       (raise-leveldb-error/errptr 'leveldb-open errptr))))
 
 (def (leveldb-close ldb)
@@ -162,19 +179,27 @@
   (check-ptr (leveldb_writebatch_create)))
 
 (def (leveldb-writebatch-clear batch)
-  (leveldb_writebatch_clear batch))
+  (if batch
+    (leveldb_writebatch_clear batch)
+    (raise-context-error 'leveldb-writebatch-clear "invalid writebatch")))
 
 (def (leveldb-writebatch-put batch key val)
-  (let ((keyx (value-bytes key))
-        (valx (value-bytes val)))
-    (leveldb_writebatch_put batch keyx valx)))
+  (if batch
+    (let ((keyx (value-bytes key))
+          (valx (value-bytes val)))
+      (leveldb_writebatch_put batch keyx valx))
+    (raise-context-error 'leveldb-writebatch-put "invalid writebatch")))
 
 (def (leveldb-writebatch-delete batch key)
-  (let (keyx (value-bytes key))
-    (leveldb_writebatch_delete batch keyx)))
+  (if batch
+    (let (keyx (value-bytes key))
+      (leveldb_writebatch_delete batch keyx))
+    (raise-context-error 'leveldb-writebatch-delete "invalid writebatch")))
 
 (def (leveldb-writebatch-append dest src)
-  (leveldb_writebatch_append dest src))
+  (if (and dest src)
+    (leveldb_writebatch_append dest src)
+    (raise-context-error 'leveldb-writebatch-append "invalid writebatch")))
 
 ;; Iterators
 (def (leveldb-iterator ldb (opts (leveldb-default-read-options)))
@@ -197,7 +222,7 @@
 (def (leveldb-iterator-valid? lit)
   (with ((leveldb-itor itor) lit)
     (if itor
-      (eq? (leveldb_iter_valid itor) 1)
+      (not (zero? (leveldb_iter_valid itor)))
       (raise-context-error 'leveldb-iterator "Iterator has been finalized"))))
 
 (def (leveldb-iterator-seek-first lit)
@@ -263,16 +288,16 @@
 (defstruct leveldb-iter-state (itor value start limit)
   final: #t)
 
-(def (in-leveldb db (start #f) (limit #f))
+(def (in-leveldb db (start #f) (limit #f) (opts (leveldb-default-read-options)))
   (iter-leveldb
-   (make-leveldb-iter-state (leveldb-iterator db) iter-nil
+   (make-leveldb-iter-state (leveldb-iterator db opts) iter-nil
                             (and start (value-bytes start))
                             (and limit (value-bytes limit)))
    leveldb-iter-key-value))
 
-(def (in-leveldb-keys db (start #f) (limit #f))
+(def (in-leveldb-keys db (start #f) (limit #f) (opts (leveldb-default-read-options)))
   (iter-leveldb
-   (make-leveldb-iter-state (leveldb-iterator db) iter-nil
+   (make-leveldb-iter-state (leveldb-iterator db opts) iter-nil
                             (and start (value-bytes start))
                             (and limit (value-bytes limit)))
    leveldb-iter-key))
@@ -303,7 +328,7 @@
       (leveldb-iterator-seek-first itor))
     (set! (leveldb-iter-state-value state)
       (if (leveldb-iterator-valid? itor)
-        (if (and start (equal? start limit))
+        (if (and start limit (bytes>=? start limit))
           iter-end
           iter-nil)
         iter-end))))
@@ -331,7 +356,7 @@
     (leveldb-iterator-next itor)
     (set! (leveldb-iter-state-value state)
       (if (leveldb-iterator-valid? itor)
-        (if (and limit (equal? (leveldb-iterator-key itor) limit))
+        (if (and limit (bytes>=? (leveldb-iterator-key itor) limit))
           iter-end
           iter-nil)
         iter-end))))
@@ -349,9 +374,9 @@
 (def (leveldb-compact-range ldb start-key end-key)
   (with ((leveldb db) ldb)
     (if db
-      (let ((startx (value-bytes start-key))
-            (endx (value-bytes end-key)))
-        (leveldb_compact_range db startx endx))
+      (leveldb_compact_range db
+        (and start-key (value-bytes start-key))
+        (and end-key (value-bytes end-key)))
       (raise-context-error 'leveldb "LevelDB database has been closed"))))
 
 (def (leveldb-destroy-db name (opts (leveldb-default-options)))
@@ -372,14 +397,32 @@
 (def (leveldb-snapshot ldb)
   (with ((leveldb db) ldb)
     (if db
-      (check-ptr (leveldb_create_snapshot db))
+      (let* ((ptr (check-ptr (leveldb_create_snapshot db)))
+             (snap (make-leveldb-snap ldb ptr)))
+        (make-will snap leveldb-snapshot-release!)
+        snap)
       (raise-context-error 'leveldb-snapshot "LevelDB database has been closed"))))
 
+(def (leveldb-snapshot-release! snap)
+  (with ((leveldb-snap ldb ptr) snap)
+    (when ptr
+      (with ((leveldb db) ldb)
+        (when db
+          (leveldb_release_snapshot db ptr)))
+      (set! (leveldb-snap-ptr snap) #f))))
+
+(defmethod {destroy leveldb-snap}
+  leveldb-snapshot-release!)
+
 (def (leveldb-snapshot-release ldb snapshot)
-  (with ((leveldb db) ldb)
-    (if db
-      (leveldb_release_snapshot db snapshot)
-      (raise-context-error 'leveldb-snapshot-release "LevelDB database has been closed"))))
+  (cond
+   ((leveldb-snap? snapshot)
+    (leveldb-snapshot-release! snapshot))
+   (else
+    (with ((leveldb db) ldb)
+      (if db
+        (leveldb_release_snapshot db snapshot)
+        (raise-context-error 'leveldb-snapshot-release "LevelDB database has been closed"))))))
 
 ;; Database Properties
 (def (leveldb-property ldb name)
@@ -403,7 +446,10 @@
 
 ;; Environment
 (def (leveldb-default-env)
-  (check-ptr (leveldb_create_default_env)))
+  (force default-env))
+
+(def default-env
+  (delay (check-ptr (leveldb_create_default_env))))
 
 (def (leveldb-env-test-directory env)
   (leveldb_env_get_test_directory env))
@@ -440,17 +486,17 @@
         (leveldb_options_set_write_buffer_size opts write-buffer-size)
         (raise-bad-argument 'leveldb "positive fixnum: write buffer size" write-buffer-size)))
     (when max-open-files
-      (if (fixnum? max-open-files)
+      (if (fixnum-positive? max-open-files)
         (leveldb_options_set_max_open_files opts max-open-files)
-        (raise-bad-argument 'leveldb "fixnum: max open files" max-open-files)))
+        (raise-bad-argument 'leveldb "positive fixnum: max open files" max-open-files)))
     (when block-size
       (if (fixnum-positive? block-size)
         (leveldb_options_set_block_size opts block-size)
         (raise-bad-argument 'leveldb "positive fixnum: block size" block-size)))
     (when block-restart-interval
-      (if (fixnum? block-restart-interval)
+      (if (fixnum-positive? block-restart-interval)
         (leveldb_options_set_block_restart_interval opts block-restart-interval)
-        (raise-bad-argument 'leveldb "fixnum: block restart interval" block-restart-interval)))
+        (raise-bad-argument 'leveldb "positive fixnum: block restart interval" block-restart-interval)))
     (when max-file-size
       (if (fixnum-positive? max-file-size)
         (leveldb_options_set_max_file_size opts max-file-size)
@@ -470,7 +516,7 @@
           (let (ptr (check-ptr (leveldb_filterpolicy_create_bloom bloom-filter-bits)))
             (leveldb_options_set_filter_policy opts ptr)
             ptr)
-          (raise-bad-argument 'leveldb "positive fixnum: bloom filter biits" bloom-filter-bits))))
+          (raise-bad-argument 'leveldb "positive fixnum: bloom filter bits" bloom-filter-bits))))
     (make-leveldb-opts opts cache bloom-filter)))
 
 (def (leveldb-default-options)
@@ -489,7 +535,10 @@
     (when fill-cache
       (leveldb_readoptions_set_fill_cache opts 1))
     (when snapshot
-      (leveldb_readoptions_set_snapshot opts snapshot))
+      (leveldb_readoptions_set_snapshot opts
+        (if (leveldb-snap? snapshot)
+          (leveldb-snap-ptr snapshot)
+          snapshot)))
     opts))
 
 (def (leveldb-default-read-options)
