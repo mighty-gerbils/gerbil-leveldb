@@ -30,7 +30,7 @@ $ brew install leveldb
 On ARM64 architectures (M1...) Homebrew installs its bits in `/opt/homebrew`. For some reason `leveldb` does not provide support for `pkg-config`. macOS users on ARM need to export `CPPFLAGS` and `LDFLAGS` for the compiler to find leveldb headers and library.
 
 ```
-$ arch          ## arm64 
+$ arch          ## arm64
 $ export CPPFLAGS=-I/opt/homebrew/include
 $ export LDFLAGS=-L/opt/homebrew/lib
 ```
@@ -40,7 +40,7 @@ $ export LDFLAGS=-L/opt/homebrew/lib
 To install the package in your `$GERBIL_PATH` (`~/.gerbil` by default):
 
 ```shell
-$ gerbil pkg install github.com/mighty-gerbils/gerbil-leveldb
+$ gerbil pkg install git.cons.io/mighty-gerbils/gerbil-leveldb
 ```
 
 ## Building and Testing

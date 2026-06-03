@@ -27,6 +27,6 @@
   `((gsc: "db/_leveldb"
                 "-cc-options" ,leveldb-cc-options
                 "-ld-options" ,leveldb-ld-options)
-          (ssi: "db/_leveldb")
-          "db/leveldb"
-          "db/leveldb-test"))
+    (ssi: "db/_leveldb")
+    "db/leveldb"
+    "db/leveldb-test"))
